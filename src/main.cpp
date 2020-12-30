@@ -1,7 +1,9 @@
 #include <Arduino.h>
-
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecureBearSSL.h>
+#include "Arduino_JSON.h"
 #include "pass.h"
 
 void setup() {
@@ -27,27 +29,37 @@ void setup() {
 }
 
 void loop() {
-  Serial.print("Loop, ");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  if ((WiFi.status() == WL_CONNECTED)) {
 
-  if ((WiFi.status() == WL_CONNECTED)) { // Check the current connection status
+    std::unique_ptr<BearSSL::WiFiClientSecure> client(
+        new BearSSL::WiFiClientSecure);
+    client->setFingerprint(fingerPrint);
 
     HTTPClient http;
+    http.begin(*client, serverName);
 
-    http.begin("http://192.168.2.104:3004/posts/1");
-    int httpCode = http.GET(); // Make the request
+    int httpCode =
+        http.POST("{\"query\": \"query {viewer {contributionsCollection "
+                  "{contributionCalendar {totalContributions}}}}\"}");
 
-    if (httpCode > 0) { // Check for the returning code
-
+    if (httpCode > 0) {
+      int counter = 0;
       String payload = http.getString();
-      Serial.println(httpCode);
-      Serial.println(payload);
+      JSONVar obj = JSON.parse(payload);
+      if (obj.hasOwnProperty("data")) {
+        counter = (int)obj["data"]["viewer"]["contributionsCollection"]
+                          ["contributionCalendar"]["totalContributions"];
+      }
+
+      Serial.print("http code: ");
+      Serial.print(httpCode);
+      Serial.print(", total contributions: ");
+      Serial.println(counter);
     } else {
       Serial.println("Error on HTTP request");
     }
 
-    http.end(); // Free the resources
+    http.end();
   }
 
   delay(1000);
