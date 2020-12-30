@@ -25,6 +25,7 @@ void setup() {
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+  // configTime(JST, 0, "ntp.nict.jp", "ntp.jst.mfeed.ad.jp");
   delay(1000);
 }
 
@@ -39,7 +40,9 @@ void loop() {
     http.begin(*client, serverName);
 
     int httpCode =
-        http.POST("{\"query\": \"query {viewer {contributionsCollection "
+        http.POST("{\"query\": \"query {viewer {contributionsCollection(from: "
+                  "\\\"2020-05-16T11:25:30+09:00\\\", to: "
+                  "\\\"2021-05-16T11:25:30+09:00\\\") "
                   "{contributionCalendar {totalContributions}}}}\"}");
 
     if (httpCode > 0) {
