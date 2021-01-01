@@ -7,136 +7,50 @@
 #include "pass.h"
 #include "wifi.h"
 #include "time.h"
+#include "yearprd.h"
 
-class yearPrd {
+class GitHubActivity {
 public:
-  class dateStr {
-  private:
+  int total;
+  std::vector<YearPrd> yearPeriods;
+
+  void sum() {
+    total = 0;
+    for (uint i = 0; i < yearPeriods.size(); i++) {
+      if (yearPeriods[i].updateStatus > 0) {
+        total += yearPeriods[i].count;
+      }
+    }
+  }
+
+  void setAggregatePeriods(time_t t, int to_year) {
     struct tm *tm;
-    String year;
-    String mon;
-    String mday;
-
-  public:
-    void setDate(time_t t) {
-      tm = localtime(&t);
-      year = String(tm->tm_year + 1900);
-
-      mon = String(tm->tm_mon + 1);
-      if (tm->tm_mon + 1 < 10) { // 0埋め
-        mon = "0" + mon;
-      }
-
-      mday = String(tm->tm_mday);
-      if (tm->tm_mday < 10) { // 0埋め
-        mday = "0" + mday;
-      }
-    };
-
-    String str() {
-      return String("\\\"" + year + "-" + mon + "-" + mday +
-                    "T00:00:00+09:00\\\"");
-    };
-
-    String date() { return String(year + "-" + mon + "-" + mday); };
-  } from, to;
-
-  static const long int threeDays = 60 * 60 * 24 * 3;
-  static const long int oneYear = 60 * 60 * 24 * 365;
-
-  yearPrd(time_t t) {
-    from.setDate(t + threeDays - oneYear);
-    to.setDate(t + threeDays);
-  };
-
-  String str() { return String("from: " + from.str() + ", to: " + to.str()); };
-
-  String prd() {
-    return String("from: " + from.date() + ", to: " + to.date());
-  };
-
-  String requestBody() {
-    return String("{\"query\": \"query {viewer {contributionsCollection(" +
-                  str() + ") {contributionCalendar {totalContributions}}}}\"}");
-  };
-};
-
-std::vector<yearPrd> yearPeriods;
-int yearContributions = 0;
-int totalContributions = 0;
-
-void setYearPeriods(time_t t) {
-  struct tm *tm;
-  tm = localtime(&t);
-  yearPeriods.clear();
-  while ((tm->tm_year + 1900) > 2015) {
-    yearPrd year(t);
-    yearPeriods.push_back(t);
-    t -= yearPrd::oneYear;
     tm = localtime(&t);
-  }
-}
-
-int getContribution(yearPrd yearPeriod) {
-  int response = 0;
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Error on WiFi connection");
-    connectWifi();
-    delay(500);
+    yearPeriods.clear();
+    while ((tm->tm_year + 1900) > to_year) {
+      YearPrd year(t);
+      yearPeriods.push_back(year);
+      t -= YearPrd::oneYear;
+      tm = localtime(&t);
+    }
   }
 
-  Serial.print("get contribution history `");
-  Serial.print(yearPeriod.prd());
-  Serial.print("`: ");
-
-  if (WiFi.status() == WL_CONNECTED) {
-
-    std::unique_ptr<BearSSL::WiFiClientSecure> client(
-        new BearSSL::WiFiClientSecure);
-    client->setFingerprint(fingerPrint);
-
-    HTTPClient http;
-    http.begin(*client, serverName.c_str());
-
-    int httpCode = http.POST(yearPeriod.requestBody());
-
-    if (httpCode > 0) {
-      String payload = http.getString();
-      JSONVar obj = JSON.parse(payload);
-      if (obj.hasOwnProperty("data")) {
-        yearContributions =
-            (int)obj["data"]["viewer"]["contributionsCollection"]
-                    ["contributionCalendar"]["totalContributions"];
-        Serial.println("Success");
-        response = 1;
-      } else {
-        Serial.println("Error on Eval response");
-        response = -1;
+  void updateAll() {
+    for (uint i = 0; i < yearPeriods.size(); i++) {
+      yearPeriods[i].update();
+      if (yearPeriods[i].updateStatus > 0) {
+        Serial.print("contribution: ");
+        Serial.println(yearPeriods[i].count);
       }
-    } else {
-      Serial.println("Error on HTTP request");
-      response = -2;
     }
-
-    http.end();
-  } else {
-    Serial.println("Unknown WiFi Error");
-    response = -3;
+    sum();
   }
 
-  return response;
-}
-
-void getHistory() {
-  for (uint i = 1; i < yearPeriods.size(); i++) {
-    if (getContribution(yearPeriods[i]) >= 0) {
-      totalContributions += yearContributions;
-      Serial.print("contribution: ");
-      Serial.println(yearContributions);
-    }
+  void updateLastYear() {
+    yearPeriods[0].update();
+    sum();
   }
-}
+} activity;
 
 void setup() {
   Serial.begin(115200);
@@ -147,17 +61,17 @@ void setup() {
 
   // Time setup
   time_t t = getJST();
-  setYearPeriods(t);
-  getHistory();
+  activity.setAggregatePeriods(t, 2015);
+  activity.updateAll();
+
+  Serial.print("##### Total CONTRIBUTIONS #####: ");
+  Serial.println(activity.total);
 
   delay(500);
 }
 
 void loop() {
-  if (getContribution(yearPeriods[0]) >= 0) {
-    Serial.print("total contribution: ");
-    Serial.println(totalContributions + yearContributions);
-  } else {
-    Serial.println("Error");
-  }
+  activity.updateLastYear();
+  Serial.print("contribution: ");
+  Serial.println(activity.total);
 }
