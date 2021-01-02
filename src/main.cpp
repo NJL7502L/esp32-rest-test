@@ -9,6 +9,8 @@
 #include "time.h"
 #include "yearprd.h"
 
+time_t lastUpdated;
+
 class GitHubActivity {
 public:
   int total;
@@ -23,7 +25,8 @@ public:
     }
   }
 
-  void setAggregatePeriods(time_t t, int to_year) {
+  void setAggregatePeriods(int to_year) {
+    time_t t = time(null);
     struct tm *tm;
     tm = localtime(&t);
     yearPeriods.clear();
@@ -60,9 +63,10 @@ void setup() {
   connectWifi();
 
   // Time setup
-  time_t t = getJST();
-  activity.setAggregatePeriods(t, 2015);
+  getJST();
+  activity.setAggregatePeriods(2015);
   activity.updateAll();
+  lastUpdated = time(null);
 
   Serial.print("##### Total CONTRIBUTIONS #####: ");
   Serial.println(activity.total);
@@ -71,7 +75,17 @@ void setup() {
 }
 
 void loop() {
+  if (time(null) > lastUpdated + 60) {
+    getJST();
+    activity.setAggregatePeriods(2015);
+    activity.updateAll();
+    lastUpdated = time(null);
+  }
   activity.updateLastYear();
-  Serial.print("contribution: ");
+  Serial.print("now: ");
+  Serial.print(time(null));
+  Serial.print(" , last: ");
+  Serial.print(lastUpdated);
+  Serial.print("\tcontribution: ");
   Serial.println(activity.total);
 }
